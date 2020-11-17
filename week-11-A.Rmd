@@ -24,6 +24,9 @@ library(tidymodels)
 set.seed(1005)
 week_11 <- shaming %>% 
   sample_n(10000)
+week_11
+?shaming
+
 ```
 
 ## Scene 1
@@ -32,20 +35,101 @@ week_11 <- shaming %>%
 
 1) How many voters got which treatments and how many voted in the 2006 primary? 
 
+```{r}
+
+week_11 %>%
+  group_by(treatment) %>%
+  summarize(num_treatment = n(), .groups = "drop")
+week_11 %>%
+  summarize(vote_2006 = sum(primary_06))
+
+```
+
 2) Explore `birth_year`. Does it make sense? If we got handed a new data set for today, would `birth_year` mean the same thing? Might we want to transform it into something different so that our model would "work" with today's data?
+
+```{r}
+# We would need to transform the birth year column to represent age at the
+# time of the elections. This would allow easier comparison across 
+# voting age demographics.
+
+```
 
 3) There are a bunch of voting records. What do they mean? Are they all recorded in the same way? How are they connected to each other? Do we want to use them all?
 
+```{r}
+
+# The voting records show whether people voted in the 2002, 2004, 2006 
+# elections. Some of them are Yes/No logicals and others are binary.
+
+```
+
 4) Explore the `no_of_names` variable? How is it distributed? What does it mean? Can we use it in our modeling?
 
+```{r}
+
+# No_of_names shows up in the table as a number around the 20s range for
+# observations where the treatment is "Neighbors." This is an integer variable
+# indicating the number of names listed on the letter if the respondent was in
+# the "Neighbours" group
+
+```
+
+
 5) Check out `hh_size`. What does it mean? Is the distribution sensible? Might it be a good idea to create a new variable which is more likely to capture an effect of interest? For example, I bet that that there is a big difference between living by yourself and living with other people. I bet that there is much less difference between living with 3 versus 4 people.
+
+```{r}
+
+# hh_size is a variable that describes the number of people in that person's
+# household. 
+# You could shift this variable into a logical answering the question 
+# "do you live with other people?"
+
+```
 
 6) Are the factor levels for treatment convenient? Try a simple regression and see! How can we change them?
 
 Perform other exploratory data analysis.  What other variables are connected to voting? What other variables are suspect/concerning?
 
+```{r}
+
+week_12 <- week_11 %>%
+  mutate(age = 2006 - birth_year)
+
+stan_glm(formula = primary_06 ~ treatment - 1,
+         data = week_11,
+         family = binomial(),
+         refresh = 0) %>%
+  print(details = FALSE, digits = 4)
+
+stan_glm(formula = primary_06 ~ age,
+         data = week_12, 
+         refresh = 0) %>%
+  print(details = FALSE, digits = 4)
+
+```
+
+
 7) Create a new data set, `week_11_clean`, which makes whatever corrections/improvements you think are a good idea. We will use that data set for the next two Scenes.
 
+```{r}
+
+week_11_clean <- week_11 %>%
+  select(-no_of_names) %>%
+  mutate(age = 2006 - birth_year) %>%
+  select(-birth_year) %>%
+  mutate(primary_02 = case_when(primary_02 == "Yes" ~ 1,
+                                primary_02 == "No" ~ 0)) %>%
+   mutate(general_02 = case_when(general_02 == "Yes" ~ 1,
+                                general_02 == "No" ~ 0)) %>% 
+  mutate(primary_04 = case_when(primary_04 == "Yes" ~ 1,
+                                primary_04 == "No" ~ 0)) %>% 
+  mutate(general_04 = case_when(general_04 == "Yes" ~ 1,
+                                general_04 == "No" ~ 0)) %>%
+  mutate(hh_size = case_when(hh_size == 1 ~ 0,
+                             hh_size > 1 ~ 1))
+
+week_11
+```
 
 
 ## Scene 2
@@ -54,17 +138,68 @@ Perform other exploratory data analysis.  What other variables are connected to 
 
 * Let's be disciplined. Split up the data and only use the training data for the rest of today. 
 
+```{r}
+
+set.seed(1005)
+week11_split <- initial_split(week_11, prob = 0.80)
+week11_train <- training(week11_split)
+week11_test  <- testing(week11_split)
+week11_folds <- vfold_cv(week11_train, v = 10)
+
+```
+
 * Use stan_glm() to estimate a model of `primary_06` as a function of `treatment`. Write a sentence or two interpreting the important parameters. (Hint: Try it both with and without an intercept.)
+
+```{r}
+
+week11_fit <- stan_glm(primary_06 ~ treatment - 1,
+         data = week11_train,
+         family = binomial(),
+         refresh = 0)
+week11_fit %>% print(detail = FALSE, digits = 6)
+
+# The Median of each treatment shows the effect that parameter has on voting
+# turnout. 
+
+```
+
 
 * Use the value of MAD_SD to discuss the magnitude/importance of various coefficients. Refer to this image, courtesy of Tyler.
 
 ```{r, echo=FALSE}
 knitr::include_graphics("simko_importance.png")
+
+# MAD_SD values average around 0.08 for all treatment values except for Control,
+# which is much lower at 0.03. This means that there is more possible error
+# among the treatment variables.
+
 ```
 
 * What is the causal effect?
 
+```{r}
+
+# The causal variable is type of treatment, which is the variable being actively
+# changed in the experiment to impact what is being measured (voter turnout).
+# The causal effect of treatment types upon voter turnout is negative (at a
+# relatively smaller <1.0 magnitude), indicating that all of the treatments
+# are more likely to decrease voter turnout.
+
+```
+
 * What is the meaning --- in words and mathematically --- of something like `treatmentSelf`? After all, it is not a variable in our data set . . .
+
+```{r}
+
+?shaming
+# The letter sent to the third group, named "Self", included the content in the 
+# Hawthorne letter, but added a notice that every household member would be 
+# notified of each others' voting behaviour after the election (this information
+# is public).
+# This object describes the impact  treatment 
+
+```
+
 
 * Compare the model with the intercept to the one without. Are they the same? Explain.
 
